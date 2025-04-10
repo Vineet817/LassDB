@@ -2,5 +2,31 @@
 name = "lassdb"
 version = "0.1.0"
 edition = "2024"
+description = "A lightweight, embeddable Rust database with optional WASM support"
+authors = ["Vineet Kumar <vineetgarg817@gmail.com>"]
+license = "Apache-2.0"
+repository = "https://github.com/vineet817/lassdb"
 
 [dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Optional future CLI support
+clap = { version = "4.3", features = ["derive"] }
+toml = "0.8.20"
+wasm-bindgen = "0.2"
+
+[dev-dependencies]
+
+[features]
+# Enable this for web/WASM storage later
+wasm = []
+
+[lib]
+name = "lassdb"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[[example]]
+name = "cli"
+path = "examples/cli.rs"
