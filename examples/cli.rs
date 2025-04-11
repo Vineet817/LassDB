@@ -1,75 +1,89 @@
-
-use lassdb::{LassDB, config::Config, memory_storage::InMemoryStorage, hybrid_storage::HybridStorage, StorageBackend};
+use lassdb::{put_user, get_user, delete_user};
+use lassdb::user::User;
+use lassdb::schema::UserV2;
 use clap::{Parser, Subcommand};
+use std::env;
+use lassdb::store::UserStore;
+
+use std::io::{self, Write};
 
 #[derive(Parser)]
-#[command(name = "LassDB CLI")]
-struct Args {
-    #[arg(long)]
-    no_disk: bool,
+#[command(name = "lassdb", version = "0.1", author = "Vineet", about = "Rust-based embedded DB")]
+struct Cli {
     #[command(subcommand)]
-    command: Command,
-
+    command: Commands,
 }
+
 #[derive(Subcommand)]
-enum Command {
+enum Commands {
+    /// Insert a new user
     Put {
         key: String,
-        value: String,
+        name: String,
+        email: String,
     },
+    /// Retrieve a user by key
     Get {
         key: String,
     },
+    /// Delete a user by key
     Delete {
         key: String,
     },
 }
 
-fn main() {
-    let args = Args::parse();
+use tracing::{info, error};
+use tracing_subscriber;
+use anyhow::Result;
 
-    let config = Config {
-        autosave: false,
-        flush_on_exit: true,
-        snapshot_path: "snapshot.json".to_string(),
-    };
 
-    let storage: Box<dyn StorageBackend> = {
-        #[cfg(target_arch = "wasm32")]
-        {
-            Box::new(InMemoryStorage::new(None))
-        }
+fn main() -> anyhow::Result<()> {
+    // Setup tracing
+    tracing_subscriber::fmt::init();
 
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            if args.no_disk {
-                Box::new(InMemoryStorage::new(None))
-            } else {
-                Box::new(HybridStorage::new(&config.snapshot_path))
+    // Open persistent DB
+    let db = UserStore::new("db")?;
+
+    println!("Welcome to LassDB (Interactive Mode)");
+    println!("Commands: put <key> <email> | get <key> | delete <key> | exit");
+
+    loop {
+        print!("lassdb> ");
+        io::stdout().flush()?;
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        let args: Vec<String> = input.trim().split_whitespace().map(String::from).collect();
+
+        match args.as_slice() {
+            [cmd, key, email] if cmd == "put" => {
+                let user = User::V2(UserV2 {
+                    id: 1,
+                    name: key.clone(),
+                    email: email.clone(),
+                });
+                db.put(key, &user)?;
+                info!("Inserted key: {}", key);
+                println!("Inserted!");
             }
-        }
-    };
-
-    let mut db = LassDB::with_config(storage, config);
-
-    match args.command {
-        Command::Put { key, value } => {
-            db.put(key, value);
-            println!("Value inserted.");
-        }
-        Command::Get { key } => {
-            match db.get(&key) {
-                Some(val) => println!("Value: {}", val),
-                None => println!("Key not found."),
+            [cmd, key] if cmd == "get" => {
+                match db.get(key)? {
+                    Some(user) => println!("Fetched: {:?}", user),
+                    None => println!("Key not found"),
+                }
             }
-        }
-        Command::Delete { key } => {
-            if db.delete(&key) {
-                println!("Key deleted.");
-            } else {
-                println!("Key not found.");
+            [cmd, key] if cmd == "delete" => {
+                let deleted = db.delete(key)?;
+                println!("Deleted: {}", deleted);
             }
+            [cmd] if cmd == "exit" => {
+                println!("Goodbye!");
+                break;
+            }
+            _ => println!("Usage: put <key> <email> | get <key> | delete <key> | exit"),
         }
+
     }
 
+    Ok(())
 }
